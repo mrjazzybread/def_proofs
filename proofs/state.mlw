@@ -1,0 +1,74 @@
+use set.Fset
+use ref.Ref
+use bintree.Tree
+use int.Int
+
+type kont 'a 'b
+
+type elt
+
+clone set.SetApp with type elt = elt
+
+type ident_free_vars = ()
+type left_free_vars = (tree elt, kont unit unit)
+
+type state = fset elt
+
+val h : ref set
+
+function set_of_tree (t: tree 'a) (s: fset 'a) : fset 'a =
+  match t with
+  | Empty -> s
+  | Node l x r ->
+     let s1 = set_of_tree l (add x s) in
+     set_of_tree r s1
+  end
+
+function n_set_of_tree (t: tree 'a) : int =
+  cardinal (set_of_tree t empty)
+
+predicate post (k : kont 'a 'b) (arg : 'a) (old_s : state) (s : state) (result : 'b)
+
+val apply (k : kont 'a 'b) (arg : 'a) : 'b
+ensures{post k arg (old !h) !h result}
+writes{h}
+
+val gen_ident (fv : ident_free_vars) : kont 'a 'a
+ensures{
+let () = fv in forall arg : 'a. forall res : 'a. forall old_s : state. forall s : state.
+post result arg old_s s res <-> arg = res && old_s = s
+}
+
+val gen_left (fv : left_free_vars) : kont unit unit 
+ensures{
+  let r, k = fv in
+  let f = result in 
+    forall arg result o s. post f arg o s result 
+      <->
+       let h = s in 
+       let old_h = o in 
+       post k () (set_of_tree r old_h) h ()
+}
+
+let n_distinct_elements (t: tree elt) : int
+    ensures { result = n_set_of_tree t } = 
+    let rec distinct_elements_loop (t: tree elt) (k: kont unit unit) : unit
+      ensures { post k () (set_of_tree t (old !h)) (!h) () }
+      variant {t} = 
+    match t with
+      | Empty -> apply k ()
+      | Node l x r -> 
+         h := add x !h;
+         distinct_elements_loop l (gen_left (r, k))
+     end in
+     let lambda_left (fv : left_free_vars) (arg : ()) : unit
+     ensures{ let r, k = fv in
+              post k () (set_of_tree r (old !h)) !h ()} =
+        let r, k = fv in 
+        distinct_elements_loop r k    
+     in 
+      h := empty(); 
+      distinct_elements_loop t (gen_ident ());
+      cardinal (!h)
+     
+ 

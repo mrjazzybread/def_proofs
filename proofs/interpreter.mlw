@@ -1,0 +1,125 @@
+
+
+
+module Proof
+use int.Int
+
+type kont 'a 'b
+
+predicate post (kont 'a 'b) (arg : 'a) (result : 'b)
+
+val apply (k : kont 'a 'b) (arg : 'a) : 'b
+ensures{post k arg result}
+
+val function gen_martelado (a : unit) : kont 'a 'b
+ensures{
+let f = result in
+forall arg result. post f arg result <-> false
+}
+
+type exp = Const int | Sub exp exp
+
+function eval (e: exp) : int = match e with
+| Const n -> n
+| Sub e1 e2 -> (eval e1) - (eval e2)
+end
+
+predicate inv (self : kont exp exp) (arg : exp) (result : exp) =
+forall arg2 r2. (eval arg = eval arg2 && post self arg2 r2) -> eval result = eval r2
+
+type context = {context_k : kont exp exp}
+invariant{
+forall arg result. post context_k arg result -> inv context_k arg result
+}by{context_k = gen_martelado ()}
+
+val function kont_of_context (c : context) : kont exp exp 
+ensures{result = c.context_k}
+
+meta coercion function kont_of_context
+
+predicate is_redex (e: exp) = match e with
+| Sub (Const _) (Const _) -> true
+| _ -> false
+end
+
+predicate is_value (e: exp) = match e with
+| Const _ -> true
+| _ -> false
+end
+
+type ident_vars = ()
+type app_left_vars = (context, exp)
+type app_right_vars = (int, context)
+
+val function gen_ident (vars : ident_vars) : kont 'a 'a
+ensures{
+let () = vars in
+forall x res.
+post result x res <-> x = res}
+
+val function gen_app_left (vars : app_left_vars) : kont exp exp
+ensures{
+let c, e = vars in
+forall x : exp. forall res : exp.
+post result x res <-> post c (Sub x e) res}
+ 
+val function gen_app_right (vars : app_right_vars) : kont exp exp
+ensures{
+let v, c = vars in
+forall x res.
+post result x res <-> post c (Sub (Const v) x) res}
+
+let head_reduction (e: exp) : exp
+requires { is_redex e }
+ensures { eval result = eval e } = match e with
+| Sub (Const v1) (Const v2) -> Const (v1 - v2)
+| _ -> absurd
+end
+
+let rec decompose_term (e: exp) (c: context) : (context, exp)
+variant{e}
+requires { not (is_value e) }
+ensures { let (c_ret, e_ret) = result in
+is_redex e_ret && forall res. post c e res -> post c_ret e_ret res }
+= match e with
+| Const _ -> absurd
+| Sub (Const v1) (Const v2) -> (c, e)
+| Sub (Const v) e -> decompose_term e {context_k = (gen_app_right (v, c))}
+| Sub e1 e2 -> decompose_term e1 {context_k = (gen_app_left (c, e2))}
+end
+
+let lambda_ident (x : exp) (fv : ident_vars) : exp = 
+ensures{x = result && inv (gen_ident fv) x result}
+x
+
+let lambda_right (x : exp) (fv : app_right_vars) : exp 
+ensures{let v, c = fv in post c (Sub (Const v) x) result && inv (gen_app_right fv) x result} =
+let v, c = fv in
+apply c.context_k (Sub (Const v) x)
+
+let lambda_left (x : exp) (fv : app_left_vars) : exp
+ensures{let c, e = fv in post c (Sub x e) result && inv (gen_app_left fv) x result} =
+let c, e = fv in
+apply c.context_k (Sub x e)
+
+let decompose (e: exp) : (context, exp)
+requires { not (is_value e) }
+ensures { let (c_ret, e_ret) = result in is_redex e_ret &&
+ post c_ret e_ret e} =
+decompose_term e {context_k = gen_ident()}
+
+let rec red (e: exp) : int
+diverges
+ensures { result = eval e } =
+ match e with
+| Const v -> v
+| _ ->
+    let (c, r) = decompose e in
+    let r_ret = head_reduction r in 
+      red (apply c.context_k r_ret)
+ end
+end
+
+
+
+

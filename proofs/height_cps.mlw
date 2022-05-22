@@ -1,0 +1,47 @@
+use int.Int
+use int.MinMax
+use bintree.Tree
+use bintree.Height
+
+type kont 'arg 'result
+
+predicate post (k : kont 'a 'b) (arg : 'a) (result : 'b)
+
+val function gen_ident unit : kont 'a 'a
+ensures{forall arg res. post result arg res <-> res = arg}
+
+val apply (k : (kont 'a 'b)) (arg : 'a) : 'b
+ensures{post k arg result}
+
+
+let rec height_cps (t : tree 'a) (k : kont int 'b) : 'b= 
+ensures{post k (height t) result}
+variant{t}
+match t with
+|Empty -> apply k 0
+|Node l _ r -> 
+  let lambda_left (hl : int) : 'b
+  ensures{post k (1 + (max hl (height r))) result} =
+    let lambda_right (hr : int) : 'b
+    ensures{post k (1 + max hl hr) result} =
+      apply k (1 + max hl hr) in
+    val kont unit : kont int 'b
+    ensures{forall arg. forall res. 
+      post result arg res -> post k (1 + (max hl arg)) res} in 
+    height_cps r (kont ()) in
+
+val kont unit : kont int 'b
+ensures{forall arg. forall res. post result arg res -> post k (1 + (max arg (height r))) res} in
+height_cps l (kont ())
+end
+
+
+
+let height_dir (t : tree 'a) : int 
+ensures{result = height t}=
+val gen_kont unit : kont 'b 'b
+ensures{forall arg res. post result arg res <-> arg = res} in
+height_cps t (gen_kont ())
+
+
+

@@ -1,0 +1,40 @@
+use int.Int
+use list.List
+use list.Length
+
+type kont 'arg 'res
+
+predicate post (k : kont 'arg 'res) (arg : 'arg) (result : 'res)
+  
+val apply (k : kont 'arg 'res) (arg : 'arg) : 'res
+ensures{post k arg result}
+
+val gen_ident (fv : unit) : kont 'a 'a
+ensures{let () = fv in  
+  let f = result in 
+  forall x : 'a. forall res : 'a. 
+  post f x res <-> res = x}
+
+val gen_inc (fv : kont int 'a) : kont int 'a 
+ensures {let k = fv in 
+  let f = result in
+  forall r : int. forall res : 'a. 
+  post f r res <-> post k (r + 1) res}
+
+let rec length_cps_aux l (k : kont int 'a) : 'a = 
+variant{l}
+ensures{post k (length l) result} 
+ match l with 
+ |Nil -> apply k 0
+ |Cons _ t -> length_cps_aux t (gen_inc k)
+ end
+ 
+let lambda_inc (fv : kont int 'a) (arg : int) : 'a =
+ensures{let r = arg in let k = fv in 
+        post k (r + 1) result}
+let r = arg in let k = fv in
+apply k (r + 1)
+
+let length_cps l : int =
+ensures{result = length l}
+ length_cps_aux l (gen_ident ())
